@@ -118,6 +118,7 @@ describe('Integration Tests', () => {
       expect(result.stdout).toContain('--global');
       expect(result.stdout).toContain('--list-projects');
       expect(result.stdout).toContain('--include-failed');
+      expect(result.stdout).toContain('--multiline');
     });
 
     it('should show version when run with --version', async () => {
@@ -200,6 +201,45 @@ describe('Integration Tests', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('git status');
       expect(result.stdout).toContain('[project1');
+    });
+
+    it('should split multi-command shells with --multiline', async () => {
+      const multilineCommand = {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              name: 'Bash',
+              input: {
+                command:
+                  'cd /Users/test/project1\ngit add README.md\ngit commit -m "yolo"',
+              },
+            },
+          ],
+        },
+        timestamp: '2025-06-07T12:00:00.000Z',
+        cwd: '/Users/test/project1',
+      };
+
+      await createTestProject('-Users-test-project1', '/Users/test/project1', [
+        { filename: 'session1.jsonl', commands: [multilineCommand] },
+      ]);
+
+      const result = await runCLI(['--global', '--multiline']);
+
+      expect(result.exitCode).toBe(0);
+      const lines = result.stdout.trim().split('\n');
+      expect(lines).toHaveLength(3);
+      expect(lines[0]).toContain('1.1');
+      expect(lines[0]).toContain('cd /Users/test/project1');
+      expect(lines[1]).toContain('1.2');
+      expect(lines[1]).toContain('git add README.md');
+      expect(lines[2]).toContain('1.3');
+      expect(lines[2]).toContain('git commit -m "yolo"');
+      // Each split line keeps the project prefix
+      expect(lines.every((line) => line.includes('[project1'))).toBe(true);
     });
 
     it('should merge multiple projects chronologically', async () => {

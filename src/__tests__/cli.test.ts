@@ -27,7 +27,7 @@ type MockedProjectDiscovery = {
 
 type MockedOutputFormatter = {
   formatProjectList: ReturnType<typeof vi.fn>;
-  formatCommandLine: ReturnType<typeof vi.fn>;
+  formatCommandLines: ReturnType<typeof vi.fn>;
   writeLineWithSigpipeCheck: ReturnType<typeof vi.fn>;
 };
 
@@ -239,10 +239,10 @@ describe('CLI Functions', () => {
       })();
 
       const mockFormatter = {
-        formatCommandLine: vi
+        formatCommandLines: vi
           .fn()
-          .mockReturnValueOnce('   1  npm install')
-          .mockReturnValueOnce('   2  npm test'),
+          .mockReturnValueOnce(['   1  npm install'])
+          .mockReturnValueOnce(['   2  npm test']),
         writeLineWithSigpipeCheck: vi.fn().mockReturnValue(true),
       };
 
@@ -255,17 +255,19 @@ describe('CLI Functions', () => {
 
       await processCommandStream(mockStream, options, isGlobal);
 
-      expect(mockFormatter.formatCommandLine).toHaveBeenCalledTimes(2);
-      expect(mockFormatter.formatCommandLine).toHaveBeenNthCalledWith(
+      expect(mockFormatter.formatCommandLines).toHaveBeenCalledTimes(2);
+      expect(mockFormatter.formatCommandLines).toHaveBeenNthCalledWith(
         1,
         mockCommands[0],
         1,
+        false,
         false
       );
-      expect(mockFormatter.formatCommandLine).toHaveBeenNthCalledWith(
+      expect(mockFormatter.formatCommandLines).toHaveBeenNthCalledWith(
         2,
         mockCommands[1],
         2,
+        false,
         false
       );
       expect(mockFormatter.writeLineWithSigpipeCheck).toHaveBeenCalledTimes(2);
@@ -294,7 +296,7 @@ describe('CLI Functions', () => {
       })();
 
       const mockFormatter = {
-        formatCommandLine: vi.fn().mockReturnValue('   1  npm install'),
+        formatCommandLines: vi.fn().mockReturnValue(['   1  npm install']),
         writeLineWithSigpipeCheck: vi.fn().mockReturnValue(true),
       };
 
@@ -307,10 +309,11 @@ describe('CLI Functions', () => {
 
       await processCommandStream(mockStream, options, isGlobal);
 
-      expect(mockFormatter.formatCommandLine).toHaveBeenCalledTimes(1);
-      expect(mockFormatter.formatCommandLine).toHaveBeenCalledWith(
+      expect(mockFormatter.formatCommandLines).toHaveBeenCalledTimes(1);
+      expect(mockFormatter.formatCommandLines).toHaveBeenCalledWith(
         mockCommands[0],
         1,
+        false,
         false
       );
     });
@@ -336,7 +339,7 @@ describe('CLI Functions', () => {
       })();
 
       const mockFormatter = {
-        formatCommandLine: vi.fn().mockReturnValue('   1  npm install'),
+        formatCommandLines: vi.fn().mockReturnValue(['   1  npm install']),
         writeLineWithSigpipeCheck: vi.fn().mockReturnValue(false), // SIGPIPE detected
       };
 
@@ -351,7 +354,7 @@ describe('CLI Functions', () => {
         processCommandStream(mockStream, options, isGlobal)
       ).rejects.toThrow('process.exit');
 
-      expect(mockFormatter.formatCommandLine).toHaveBeenCalledTimes(1);
+      expect(mockFormatter.formatCommandLines).toHaveBeenCalledTimes(1);
       expect(mockFormatter.writeLineWithSigpipeCheck).toHaveBeenCalledTimes(1);
     });
 
@@ -361,7 +364,7 @@ describe('CLI Functions', () => {
       })();
 
       const mockFormatter = {
-        formatCommandLine: vi.fn(),
+        formatCommandLines: vi.fn(),
         writeLineWithSigpipeCheck: vi.fn(),
       };
 
