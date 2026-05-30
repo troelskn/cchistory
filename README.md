@@ -53,16 +53,34 @@ cchistory                    # Current project history
 cchistory --global           # All projects
 cchistory --list-projects    # See all available projects
 cchistory --multiline        # Split multi-command shells onto separate lines
-cchistory | grep docker      # Find Docker commands  
+cchistory --follow           # Stream new commands live (like tail -f)
+cchistory | grep docker      # Find Docker commands
 cchistory | tail -5          # Last 5 commands
 cchistory my-app | tail -10  # Last 10 from specific project
 cchistory ~/code/my-app      # Project by full path
 ```
 
+### Follow mode
+
+`-f` / `--follow` works like `tail -f`: cchistory prints the existing history and
+then stays open, printing new commands as Claude Code writes them. It keeps
+following across newly started sessions, and combines with the other flags and
+with pipes:
+
+```bash
+cchistory -f                 # Follow the current project
+cchistory -f --global        # Follow every project at once
+cchistory -f | grep git      # Watch for git commands as they happen
+```
+
+Press `Ctrl-C` to stop. While following, the live commands are printed in the
+order they arrive (matching `tail -f file1 file2`), rather than re-sorted by
+timestamp.
+
 ## ✨ Features
 
 - 🔍 Extract all Bash commands Claude executed across projects
-- 🗂️ Filter by specific project or search globally  
+- 🗂️ Filter by specific project or search globally
 - 📊 Standard Unix tool compatibility (`grep`, `awk`, `sort`)
 - ⚡ Fast streaming parser for large conversation logs
 - 🚀 Zero-config - works with existing Claude Code setup
@@ -72,7 +90,7 @@ cchistory ~/code/my-app      # Project by full path
 Claude Code stores conversation history in `~/.claude/projects/`. This tool:
 
 1. Finds your Claude projects
-2. Streams through conversation logs  
+2. Streams through conversation logs
 3. Extracts shell commands Claude executed
 4. Formats them like traditional shell history
 
@@ -113,7 +131,7 @@ Extracts commands from:
 
 ## Requirements
 
-- Node.js 20+ 
+- Node.js 20+
 - Claude Code with conversation history in `~/.claude/projects/`
 
 **Note**: Claude Code automatically cleans up conversation transcripts based on the `cleanupPeriodDays` setting (default: 30 days). Commands older than this period won't appear in cchistory output. You can adjust this retention period in [Claude Code's settings](https://docs.anthropic.com/en/docs/claude-code/settings) if needed.
@@ -122,9 +140,10 @@ Extracts commands from:
 
 ```
 cchistory [project-name]    # Show history for specific project (by name or path)
-cchistory --global          # Show history from all projects  
+cchistory --global          # Show history from all projects
 cchistory --list-projects   # List all available Claude projects
 cchistory -m, --multiline   # Split multi-command shells onto separate lines
+cchistory -f, --follow      # Keep running and print new commands as they happen
 cchistory --include-failed  # Include failed command executions
 cchistory --help            # Show usage info
 ```
@@ -157,7 +176,7 @@ Use `-m` / `--multiline` to break them onto separate lines instead. Each line ke
 `cchistory` does one thing well: extract shell commands. Use it with standard Unix tools:
 
 - `grep` for filtering
-- `head`/`tail` for limiting output  
+- `head`/`tail` for limiting output
 - `awk` for field processing
 - `sort`/`uniq` for analysis
 - Pipe to files for documentation
