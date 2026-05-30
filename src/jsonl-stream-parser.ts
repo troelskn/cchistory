@@ -51,22 +51,35 @@ export class JSONLStreamParser {
     for await (const line of rl) {
       lineNumber++;
       entryCount++;
-      const lineStr = line.toString();
 
-      if (!lineStr.trim()) continue;
-
-      // Pre-filter: Skip lines that can't contain bash commands or user commands
-      if (!this.lineContainsCommands(lineStr)) {
-        continue;
-      }
-
-      yield* this.processEntry(lineStr, lineNumber, filePath);
+      yield* this.processLine(line.toString(), lineNumber, filePath);
 
       // Periodic cleanup of old pending commands
       if (entryCount % this.maxPendingEntries === 0) {
         yield* this.cleanupOldPendingCommands();
       }
     }
+  }
+
+  /**
+   * Process a single raw JSONL line, applying the blank/relevance pre-filter
+   * and yielding any commands it produces.
+   *
+   * Exposed so the follow tailer can feed lines incrementally as they are
+   * appended to a growing file, reusing the same pending tool_use ->
+   * tool_result matching state across reads.
+   */
+  async *processLine(
+    line: string,
+    lineNumber: number,
+    filePath: string
+  ): AsyncGenerator<ClaudeCommand> {
+    if (!line.trim()) return;
+
+    // Pre-filter: Skip lines that can't contain bash commands or user commands
+    if (!this.lineContainsCommands(line)) return;
+
+    yield* this.processEntry(line, lineNumber, filePath);
   }
 
   /**
@@ -220,6 +233,18 @@ export class JSONLStreamParser {
     }
 
     return null;
+  }
+
+  /**
+   * Flush all currently pending (unmatched) commands as successful.
+   *
+   * Mirrors the end-of-file flush for the follow tailer: when a growing file
+   * goes idle with a Bash tool_use whose tool_result never arrived (e.g. a
+   * long-running or interrupted command), surface it rather than holding it
+   * forever.
+   */
+  flushPending(): Generator<ClaudeCommand> {
+    return this.flushPendingCommands();
   }
 
   /**
