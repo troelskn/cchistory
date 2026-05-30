@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { createFollowStream } from './follow-tailer.js';
 import { createResilientCommandStream } from './jsonl-stream-parser.js';
 import { OutputFormatter } from './output-formatter.js';
 import { ProjectDiscovery } from './project-discovery.js';
 import { StreamMerger } from './stream-merger.js';
 import type { CLIOptions, ClaudeCommand } from './types.js';
 import { version } from './version.js';
+
+// Aborted on SIGINT/SIGTERM so follow mode can stop and clean up gracefully.
+const followAbort = new AbortController();
 
 // Handle SIGPIPE gracefully (when piped to head, tail, etc.)
 process.on('SIGPIPE', () => {
@@ -43,6 +47,15 @@ export async function createCommandStream(
 
   if (options.global) {
     const projects = await discovery.getAllProjects();
+    if (options.follow) {
+      return {
+        stream: createFollowStream(
+          projects.map((p) => p.claudePath),
+          { signal: followAbort.signal }
+        ),
+        isGlobal: true,
+      };
+    }
     return {
       stream: streamMerger.mergeProjectStreams(projects),
       isGlobal: true,
@@ -64,9 +77,27 @@ export async function createCommandStream(
       { file: 'stderr' }
     );
     const projects = await discovery.getAllProjects();
+    if (options.follow) {
+      return {
+        stream: createFollowStream(
+          projects.map((p) => p.claudePath),
+          { signal: followAbort.signal }
+        ),
+        isGlobal: true,
+      };
+    }
     return {
       stream: streamMerger.mergeProjectStreams(projects),
       isGlobal: true,
+    };
+  }
+
+  if (options.follow) {
+    return {
+      stream: createFollowStream([project.claudePath], {
+        signal: followAbort.signal,
+      }),
+      isGlobal: false,
     };
   }
 
@@ -113,7 +144,9 @@ export async function processCommandStream(
     commandCount++;
   }
 
-  if (commandCount === 0) {
+  // In follow mode an empty history is normal - we wait for new commands
+  // rather than treating "nothing yet" as a not-found error.
+  if (commandCount === 0 && !options.follow) {
     process.exit(2);
   }
 }
@@ -127,11 +160,23 @@ async function main(
       return handleListProjects();
     }
 
+    if (options.follow) {
+      // Stop following on Ctrl-C / termination, letting the stream drain and
+      // the process exit cleanly (code 0) rather than aborting mid-write.
+      const stop = () => followAbort.abort();
+      process.once('SIGINT', stop);
+      process.once('SIGTERM', stop);
+    }
+
     const { stream, isGlobal } = await createCommandStream(
       projectName,
       options
     );
     await processCommandStream(stream, options, isGlobal);
+
+    if (options.follow) {
+      process.exit(0);
+    }
   } catch (error) {
     console.error(`Error: ${(error as Error).message}`, { file: 'stderr' });
     process.exit(1);
@@ -153,6 +198,10 @@ program
   .option(
     '-m, --multiline',
     'split multi-line commands onto separate lines with sub-indices (e.g. 1610.1)'
+  )
+  .option(
+    '-f, --follow',
+    'keep running and print new commands as they happen (like tail -f)'
   )
   .action(async (project: string | undefined, options: CLIOptions) => {
     await main(project, options);
