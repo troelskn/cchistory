@@ -52,6 +52,7 @@ npm link
 cchistory                    # Current project history
 cchistory --global           # All projects
 cchistory --list-projects    # See all available projects
+cchistory --multiline        # Split multi-command shells onto separate lines
 cchistory | grep docker      # Find Docker commands  
 cchistory | tail -5          # Last 5 commands
 cchistory my-app | tail -10  # Last 10 from specific project
@@ -123,6 +124,8 @@ Extracts commands from:
 cchistory [project-name]    # Show history for specific project (by name or path)
 cchistory --global          # Show history from all projects  
 cchistory --list-projects   # List all available Claude projects
+cchistory -m, --multiline   # Split multi-command shells onto separate lines
+cchistory --include-failed  # Include failed command executions
 cchistory --help            # Show usage info
 ```
 
@@ -137,7 +140,17 @@ Each line shows:
 - **project-name**: Which Claude project ran the command
 - **command**: The actual shell command
 
-Multi-line commands use zsh history format with `\\n` for newlines.
+When Claude runs several commands in one shell, they are shown on a single line in zsh history format with `\n` separating them.
+
+Use `-m` / `--multiline` to break them onto separate lines instead. Each line keeps the parent's history index with a `.N` sub-index so it's clear they ran in the same shell:
+
+```
+1610.1  cd /Users/you/projects/foobar
+1610.2  git add README.md
+1610.3  git commit -m "yolo"
+```
+
+> Note: splitting happens on the `\n` separator, so a command whose own text literally contains `\n` (e.g. `printf 'a\nb'`) will also be broken at that point.
 
 ## Unix Philosophy
 

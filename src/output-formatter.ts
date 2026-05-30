@@ -19,16 +19,59 @@ export class OutputFormatter {
     index: number,
     isGlobal: boolean
   ): string {
-    const indexStr = index.toString().padStart(4);
+    return this.buildLine(
+      index.toString().padStart(4),
+      command,
+      isGlobal,
+      command.command
+    );
+  }
 
+  /**
+   * Format a command into one or more output lines.
+   *
+   * When `multiline` is enabled, multi-command shells (joined by the parser with
+   * a literal `\n` marker) are split into one line per command, each sharing the
+   * parent history index with a `.N` sub-index (e.g. 1610.1, 1610.2). Single
+   * commands still get a `.1` suffix so the numbering is uniform. When disabled,
+   * a single line is returned with the commands kept on one line (default).
+   */
+  formatCommandLines(
+    command: ClaudeCommand,
+    index: number,
+    isGlobal: boolean,
+    multiline: boolean
+  ): string[] {
+    if (!multiline) {
+      return [this.formatCommandLine(command, index, isGlobal)];
+    }
+
+    const baseLabel = index.toString().padStart(4);
+    // The parser joins multi-line commands with a literal `\n` marker.
+    const parts = command.command.split('\\n');
+    return parts.map((part, i) =>
+      this.buildLine(`${baseLabel}.${i + 1}`, command, isGlobal, part)
+    );
+  }
+
+  /**
+   * Build a single output line from a pre-rendered index label and command text,
+   * adding the `[project]` prefix when rendering global (cross-project) output.
+   */
+  private buildLine(
+    label: string,
+    command: ClaudeCommand,
+    isGlobal: boolean,
+    text: string
+  ): string {
     if (isGlobal && command.projectPath) {
       // Extract project name from path for global view
       const projectName = this.extractProjectName(command.projectPath);
       const projectPrefix = `[${projectName.padEnd(15)}] `;
-      return `${indexStr}  ${projectPrefix}${command.command}`;
+      return `${label}  ${projectPrefix}${text}`;
     }
 
-    return `${indexStr}  ${command.command}`;
+    return `${label}  ${text}`;
   }
 
   /**

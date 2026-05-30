@@ -102,6 +102,61 @@ describe('OutputFormatter', () => {
     });
   });
 
+  describe('formatCommandLines', () => {
+    it('returns a single unchanged line when multiline is disabled', () => {
+      const command: ClaudeCommand = {
+        timestamp: new Date('2025-06-07T12:00:00.000Z'),
+        command: 'cd /tmp\\ngit status',
+        source: 'bash',
+      };
+
+      const result = formatter.formatCommandLines(command, 5, false, false);
+      expect(result).toEqual(['   5  cd /tmp\\ngit status']);
+    });
+
+    it('suffixes a single-command shell with .1 when multiline is enabled', () => {
+      const command: ClaudeCommand = {
+        timestamp: new Date('2025-06-07T12:00:00.000Z'),
+        command: 'npm install commander',
+        source: 'bash',
+      };
+
+      const result = formatter.formatCommandLines(command, 1, false, true);
+      expect(result).toEqual(['   1.1  npm install commander']);
+    });
+
+    it('splits a multi-command shell into sub-indexed lines', () => {
+      const command: ClaudeCommand = {
+        timestamp: new Date('2025-06-07T12:00:00.000Z'),
+        command:
+          'cd /Users/test/foobar\\ngit add README.md\\ngit commit -m "yolo"',
+        source: 'bash',
+      };
+
+      const result = formatter.formatCommandLines(command, 1610, false, true);
+      expect(result).toEqual([
+        '1610.1  cd /Users/test/foobar',
+        '1610.2  git add README.md',
+        '1610.3  git commit -m "yolo"',
+      ]);
+    });
+
+    it('repeats the project prefix on each line in global mode', () => {
+      const command: ClaudeCommand = {
+        timestamp: new Date('2025-06-07T12:00:00.000Z'),
+        command: 'cd app\\nnpm test',
+        source: 'bash',
+        projectPath: '/Users/test/foobar',
+      };
+
+      const result = formatter.formatCommandLines(command, 7, true, true);
+      expect(result).toEqual([
+        '   7.1  [foobar         ] cd app',
+        '   7.2  [foobar         ] npm test',
+      ]);
+    });
+  });
+
   describe('formatProjectList', () => {
     it('should format empty project list', () => {
       const projects: ProjectInfo[] = [];

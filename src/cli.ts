@@ -90,10 +90,22 @@ export async function processCommandStream(
       continue;
     }
 
-    const line = formatter.formatCommandLine(command, index, isGlobal);
-    const shouldContinue = formatter.writeLineWithSigpipeCheck(line);
+    const lines = formatter.formatCommandLines(
+      command,
+      index,
+      isGlobal,
+      options.multiline ?? false
+    );
 
-    if (!shouldContinue) {
+    let stopped = false;
+    for (const line of lines) {
+      if (!formatter.writeLineWithSigpipeCheck(line)) {
+        stopped = true;
+        break;
+      }
+    }
+
+    if (stopped) {
       break;
     }
 
@@ -137,6 +149,10 @@ program
   .option(
     '--include-failed',
     'include failed command executions (default: only successful)'
+  )
+  .option(
+    '-m, --multiline',
+    'split multi-line commands onto separate lines with sub-indices (e.g. 1610.1)'
   )
   .action(async (project: string | undefined, options: CLIOptions) => {
     await main(project, options);

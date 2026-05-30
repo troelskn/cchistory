@@ -54,4 +54,5 @@ export interface CLIOptions {
   global?: boolean;
   listProjects?: boolean;
   includeFailed?: boolean;
+  multiline?: boolean;
 }
