@@ -289,6 +289,59 @@ describe('createFollowStream', () => {
     expect(commands.map((c) => c.command)).toEqual(['echo orphan']);
   });
 
+  it('flushes orphaned pending commands during catch-up, not in the live phase', async () => {
+    // Scenario: an old session file has a tool_use with an ID but no matching
+    // tool_result (interrupted/long-running command). A newer session file has
+    // a normal command. The orphaned command should appear in chronological
+    // catch-up order — before the newer command — not deferred to the idle
+    // flush in the live loop.
+    const file1 = join(testDir, 's1.jsonl');
+    const file2 = join(testDir, 's2.jsonl');
+
+    // Old session: orphaned tool_use (has id, no tool_result)
+    await writeFile(
+      file1,
+      `${bashLine('echo orphan', { id: 'tool-orphan', timestamp: '2025-06-07T11:00:00.000Z' })}\n`
+    );
+    // Newer session: normal command (no id, yields immediately)
+    await writeFile(
+      file2,
+      `${bashLine('echo newer', { timestamp: '2025-06-07T12:00:00.000Z' })}\n`
+    );
+
+    // Set file mtimes so s1 is older than s2
+    const { utimes } = await import('node:fs/promises');
+    await utimes(
+      file1,
+      new Date('2025-06-07T11:00:00Z'),
+      new Date('2025-06-07T11:00:00Z')
+    );
+    await utimes(
+      file2,
+      new Date('2025-06-07T12:00:00Z'),
+      new Date('2025-06-07T12:00:00Z')
+    );
+
+    const gen = createFollowStream([testDir], {
+      pollMs: 20,
+      idleFlushMs: 0, // disable idle flush so we can tell where commands come from
+      signal: controller.signal,
+    });
+    const { commands, done } = background(gen);
+
+    // Wait for both commands to appear during catch-up
+    await waitFor(() => commands.length >= 2, 3000);
+    controller.abort();
+    await done;
+
+    // The orphaned command should have been flushed at the end of its file
+    // during catch-up, so it appears before the newer command.
+    expect(commands.map((c) => c.command)).toEqual([
+      'echo orphan',
+      'echo newer',
+    ]);
+  });
+
   it('stops promptly when the signal is aborted', async () => {
     await writeFile(join(testDir, 's1.jsonl'), `${bashLine('echo only')}\n`);
     const gen = createFollowStream([testDir], {
