@@ -164,7 +164,7 @@ describe('Command Success Tracking', () => {
       commands.push(command);
     }
 
-    // Flush pending commands (this should yield the orphaned command with success=true)
+    // Flush pending commands (orphaned command surfaces with unknown outcome)
     const pendingGenerator = (
       parser as unknown as {
         flushPendingCommands: () => Generator<ClaudeCommand>;
@@ -177,7 +177,7 @@ describe('Command Success Tracking', () => {
     expect(commands).toHaveLength(1);
     const command = commands[0];
     expect(command.command).toBe('ls -la');
-    expect(command.success).toBe(true); // Should default to true for orphaned commands
+    expect(command.success).toBeUndefined(); // outcome unknown, not assumed success
   });
 
   it('should match tool uses with results by ID even when not sequential', async () => {

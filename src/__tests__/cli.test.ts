@@ -318,6 +318,54 @@ describe('CLI Functions', () => {
       );
     });
 
+    it('keeps unknown-outcome commands visible while filtering only confirmed failures', async () => {
+      // Orphaned commands flush with success undefined (outcome unknown). The
+      // default filter drops only confirmed failures (success === false), so an
+      // unknown-outcome command must still appear.
+      const mockCommands: ClaudeCommand[] = [
+        {
+          timestamp: new Date('2025-06-07T12:00:00.000Z'),
+          command: 'npm run dev', // orphan: never completed -> unknown
+          source: 'bash',
+          success: undefined,
+        },
+        {
+          timestamp: new Date('2025-06-07T12:01:00.000Z'),
+          command: 'false', // confirmed failure -> filtered
+          source: 'bash',
+          success: false,
+        },
+      ];
+
+      const mockStream = (async function* () {
+        for (const command of mockCommands) {
+          yield command;
+        }
+      })();
+
+      const mockFormatter = {
+        formatCommandLines: vi.fn().mockReturnValue(['   1  npm run dev']),
+        writeLineWithSigpipeCheck: vi.fn().mockReturnValue(true),
+      };
+
+      vi.mocked(OutputFormatter).mockImplementation(
+        () => mockFormatter as MockedOutputFormatter
+      );
+
+      const options: CLIOptions = { includeFailed: false };
+
+      await processCommandStream(mockStream, options, false);
+
+      // Only the unknown-outcome command is rendered; the failure is dropped.
+      expect(mockFormatter.formatCommandLines).toHaveBeenCalledTimes(1);
+      expect(mockFormatter.formatCommandLines).toHaveBeenCalledWith(
+        mockCommands[0],
+        1,
+        false,
+        false
+      );
+    });
+
     it('should stop processing when SIGPIPE is detected', async () => {
       const mockCommands: ClaudeCommand[] = [
         {
