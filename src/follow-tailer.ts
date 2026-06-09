@@ -93,7 +93,7 @@ export class FileTail {
     }
   }
 
-  /** Flush any unmatched pending commands as successful (idle/orphan flush). */
+  /** Flush any unmatched pending commands as unknown-outcome (idle/orphan flush). */
   flushPending(): Generator<ClaudeCommand> {
     return this.parser.flushPending();
   }
@@ -178,7 +178,7 @@ async function* projectCatchup(
     // enough to look like closed sessions. Liveness is judged by mtime age, not
     // by "is this the newest file": there may be zero live sessions (flush them
     // all, newest included) or several concurrent ones (defer them all, so no
-    // in-flight command is prematurely reported as a success).
+    // in-flight command is flushed as unknown before its real result arrives).
     if (mtime <= settledBefore) {
       yield* tail.flushPending();
     }

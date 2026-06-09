@@ -405,7 +405,7 @@ describe('createFollowStream', () => {
 
   it('does not emit a command twice when its result arrives after the idle flush', async () => {
     // A command that runs longer than idleFlushMs: its tool_use is followed by a
-    // quiet gap, so the idle flush surfaces it as an assumed success. When the
+    // quiet gap, so the idle flush surfaces it with an unknown outcome. When the
     // real tool_result finally lands (here: an error), it must NOT produce a
     // second copy, nor retroactively rewrite the already-emitted status — the
     // pending entry was cleared by the flush, so the late result is a no-op.
@@ -422,7 +422,7 @@ describe('createFollowStream', () => {
     // Idle flush fires after the quiet window and surfaces the orphan once.
     await waitFor(() => commands.length >= 1);
     expect(commands.map((c) => c.command)).toEqual(['echo slow']);
-    expect(commands[0].success).toBe(true); // assumed success
+    expect(commands[0].success).toBeUndefined(); // unknown, not assumed success
 
     // The command finishes much later and its real result (an error) arrives.
     await appendFile(file, `${resultLine('tool-slow', true)}\n`);
@@ -436,7 +436,7 @@ describe('createFollowStream', () => {
     // no retroactive correction from the late result.
     expect(commands).toHaveLength(1);
     expect(commands[0].command).toBe('echo slow');
-    expect(commands[0].success).toBe(true);
+    expect(commands[0].success).toBeUndefined();
   });
 
   it('stops promptly when the signal is aborted', async () => {

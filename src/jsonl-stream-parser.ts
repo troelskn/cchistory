@@ -236,7 +236,7 @@ export class JSONLStreamParser {
   }
 
   /**
-   * Flush all currently pending (unmatched) commands as successful.
+   * Flush all currently pending (unmatched) commands as unknown-outcome.
    *
    * Mirrors the end-of-file flush for the follow tailer: when a growing file
    * goes idle with a Bash tool_use whose tool_result never arrived (e.g. a
@@ -248,11 +248,16 @@ export class JSONLStreamParser {
   }
 
   /**
-   * Flush all pending commands (assume success)
+   * Flush all pending commands with an unknown outcome.
+   *
+   * Their tool_result never arrived, so the result is genuinely unknown. We
+   * leave `success` undefined rather than assuming success: that keeps them in
+   * default output (only confirmed failures are filtered) without claiming a
+   * success we never observed.
    */
   private *flushPendingCommands(): Generator<ClaudeCommand> {
     for (const command of this.pendingCommands.values()) {
-      command.success = true; // Default to success for orphaned commands
+      // success stays undefined — outcome unknown, neither pass nor fail.
       yield command;
     }
     this.pendingCommands.clear();
