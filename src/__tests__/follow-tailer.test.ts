@@ -342,6 +342,103 @@ describe('createFollowStream', () => {
     ]);
   });
 
+  it('flushes a settled file orphan during catch-up even when it is the newest file (no live session)', async () => {
+    // Claude is not running: every file is old, including the most recently
+    // modified one. Liveness is judged by mtime age, not file rank, so the
+    // newest file is still treated as a closed session and its orphan surfaces
+    // during catch-up — not left stranded waiting for a result that never comes.
+    const file = join(testDir, 's1.jsonl');
+    await writeFile(file, `${bashLine('echo stale', { id: 'tool-stale' })}\n`);
+    const { utimes } = await import('node:fs/promises');
+    await utimes(
+      file,
+      new Date('2025-06-07T11:00:00Z'),
+      new Date('2025-06-07T11:00:00Z')
+    );
+
+    const gen = createFollowStream([testDir], {
+      pollMs: 20,
+      idleFlushMs: 0, // idle flush disabled — catch-up is the only path
+      signal: controller.signal,
+    });
+    const { commands, done } = background(gen);
+
+    await waitFor(() => commands.length >= 1, 1000);
+    controller.abort();
+    await done;
+
+    expect(commands.map((c) => c.command)).toEqual(['echo stale']);
+  });
+
+  it('does not flush a concurrent live session orphan during catch-up', async () => {
+    // Two sessions run concurrently -> two recently-written files. The older
+    // (but still live) one holds an in-flight command. A "newest file is the
+    // only live one" rule would flush it prematurely as a success; mtime-age
+    // liveness defers it so the real tool_result decides its status.
+    const liveA = join(testDir, 'a.jsonl'); // in-flight command
+    const liveB = join(testDir, 'b.jsonl'); // more recently active
+    await writeFile(liveA, `${bashLine('echo running', { id: 'tool-run' })}\n`);
+    await writeFile(liveB, `${bashLine('echo other')}\n`); // no id -> immediate
+
+    const gen = createFollowStream([testDir], {
+      pollMs: 20,
+      idleFlushMs: 10_000, // long window: live loop won't idle-flush in-test
+      signal: controller.signal,
+    });
+    const { commands, done } = background(gen);
+
+    // The complete command appears; the in-flight one must stay held.
+    await waitFor(() => commands.length >= 1);
+    await sleep(100);
+    expect(commands.map((c) => c.command)).toEqual(['echo other']);
+
+    // The real result arrives (an error) and matches the held command.
+    await appendFile(liveA, `${resultLine('tool-run', true)}\n`);
+    await waitFor(() => commands.length >= 2);
+    controller.abort();
+    await done;
+
+    const running = commands.find((c) => c.command === 'echo running');
+    expect(running).toBeDefined();
+    expect(running?.success).toBe(false); // matched the real result, not flushed
+  });
+
+  it('does not emit a command twice when its result arrives after the idle flush', async () => {
+    // A command that runs longer than idleFlushMs: its tool_use is followed by a
+    // quiet gap, so the idle flush surfaces it as an assumed success. When the
+    // real tool_result finally lands (here: an error), it must NOT produce a
+    // second copy, nor retroactively rewrite the already-emitted status — the
+    // pending entry was cleared by the flush, so the late result is a no-op.
+    const file = join(testDir, 's1.jsonl');
+    await writeFile(file, `${bashLine('echo slow', { id: 'tool-slow' })}\n`);
+
+    const gen = createFollowStream([testDir], {
+      pollMs: 20,
+      idleFlushMs: 60, // shorter than the command's run time
+      signal: controller.signal,
+    });
+    const { commands, done } = background(gen);
+
+    // Idle flush fires after the quiet window and surfaces the orphan once.
+    await waitFor(() => commands.length >= 1);
+    expect(commands.map((c) => c.command)).toEqual(['echo slow']);
+    expect(commands[0].success).toBe(true); // assumed success
+
+    // The command finishes much later and its real result (an error) arrives.
+    await appendFile(file, `${resultLine('tool-slow', true)}\n`);
+    // Give the live loop several poll cycles to drain the appended result.
+    await sleep(150);
+
+    controller.abort();
+    await done;
+
+    // Still exactly one occurrence, still the flushed status — no duplicate and
+    // no retroactive correction from the late result.
+    expect(commands).toHaveLength(1);
+    expect(commands[0].command).toBe('echo slow');
+    expect(commands[0].success).toBe(true);
+  });
+
   it('stops promptly when the signal is aborted', async () => {
     await writeFile(join(testDir, 's1.jsonl'), `${bashLine('echo only')}\n`);
     const gen = createFollowStream([testDir], {

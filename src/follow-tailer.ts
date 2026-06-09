@@ -142,10 +142,18 @@ async function listJsonlFiles(projectPath: string): Promise<string[]> {
  *
  * Mirrors JSONLStreamParser.createProjectStream so the historical output of
  * follow mode matches non-follow output.
+ *
+ * `settledBefore` (epoch ms) decides which files are treated as completed
+ * sessions: a file untouched at or before it is settled, so any Bash tool_use
+ * still awaiting its tool_result is flushed here, in chronological catch-up
+ * order. More recently modified files are left pending — they may belong to a
+ * live session, so the idle flush in the live loop handles them once they go
+ * quiet (a late tool_result can still match in the meantime).
  */
 async function* projectCatchup(
   projectPath: string,
   registry: Map<string, FileTail>,
+  settledBefore: number,
   signal?: AbortSignal
 ): AsyncGenerator<ClaudeCommand> {
   const jsonlFiles = await listJsonlFiles(projectPath);
@@ -161,10 +169,19 @@ async function* projectCatchup(
   );
   fileStats.sort((a, b) => a.mtime - b.mtime);
 
-  for (const { path } of fileStats) {
+  for (const { path, mtime } of fileStats) {
     const tail = new FileTail(path, 0);
     registry.set(path, tail);
     yield* tail.drain(signal);
+
+    // Flush orphaned pending commands only for files that have been quiet long
+    // enough to look like closed sessions. Liveness is judged by mtime age, not
+    // by "is this the newest file": there may be zero live sessions (flush them
+    // all, newest included) or several concurrent ones (defer them all, so no
+    // in-flight command is prematurely reported as a success).
+    if (mtime <= settledBefore) {
+      yield* tail.flushPending();
+    }
   }
 }
 
@@ -263,14 +280,20 @@ export async function* createFollowStream(
 ): AsyncGenerator<ClaudeCommand> {
   const registry = new Map<string, FileTail>();
   const signal = options.signal;
+  const idleFlushMs = options.idleFlushMs ?? DEFAULT_IDLE_FLUSH_MS;
+
+  // Files last modified at or before this instant are treated as settled
+  // (closed sessions) during catch-up; more recently touched ones are deferred
+  // to the live loop. Computed once so every project shares one reference time.
+  const settledBefore = Date.now() - idleFlushMs;
 
   // Phase 1: catch up on existing history.
   if (projectPaths.length === 1) {
-    yield* projectCatchup(projectPaths[0], registry, signal);
+    yield* projectCatchup(projectPaths[0], registry, settledBefore, signal);
   } else if (projectPaths.length > 1) {
     const merger = new StreamMerger();
     const catchupStreams = projectPaths.map((path) =>
-      projectCatchup(path, registry, signal)
+      projectCatchup(path, registry, settledBefore, signal)
     );
     yield* merger.chronologicalMerge(catchupStreams);
   }
