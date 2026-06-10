@@ -2,6 +2,10 @@
   "name": "cchistory",
   "version": "0.3.0",
   "description": "Get shell commands from Claude Code conversation history. Because Claude's commands don't appear in your shell history.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eckardt/cchistory"
+  },
   "main": "dist/cli.js",
   "bin": {
     "cchistory": "bin/cchistory.js"
